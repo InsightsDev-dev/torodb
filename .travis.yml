@@ -1,64 +1,97 @@
-language: java
-script: mvn -Psafer -Pintegration -Passembler -B -e -T 1C verify
-jdk:
-  - oraclejdk8
-  - oraclejdk7
 addons:
-  postgresql: "9.4"
   apt:
     packages:
-      - oracle-java8-installer
-services:
-  - postgresql
-  
+    - oracle-java8-installer
+  artifacts:
+    debug: true
+    paths:
+    - libs.zip
+    - build.zip
+    - testbuild.zip
+    - jacoco.exec
+    target_paths: 7085160a-ef9c-4ae1-ae1c-275d3d126328
+  postgresql: '9.4'
+after_success:
+- ' wget --content-disposition http://search.maven.org/remotecontent?filepath=org/jacoco/jacoco/0.7.7.201606060606/jacoco-0.7.7.201606060606.zip '
+- ' unzip -o jacoco-0.7.7.201606060606.zip  '
+- ' cd lib  '
+- ' mv * ../  '
+- ' cd ..  '
+- ' chmod a+x *  '
+- ' cd $PWD  '
+- ' rm  ''jacoco.exec'''
+- ' export JAVA_TOOL_OPTIONS=-javaagent:$PWD/jacocoagent.jar=destfile=$PWD/jacoco.exec,append=true  '
+- ' travis_wait 360 mvn  test -Dmaven.test.failure.ignore=true -Djacoco.skip=true
+  -Dcobertura.skip=true -Dmaven.clover.skip=true -Dmaven.javadoc.skip=true -Drat.skip=true
+  -Drat.ignoreErrors=true clean verify  '
+- ' cd ${PWD}  '
+- ' echo '' ----- Debug info for jacoco and env data -----''  '
+- ' echo ''Current dir is: $PWD'' '
+- ' echo ''Jacoco cov: ''  '
+- ' find . -name ''*.exec''  '
+- ' echo '' ----------------------------------------------'' '
+- ./df-build.sh
+before_deploy:
+- echo "<settings><servers><server><id>ossrh-snapshot</id><username>\${env.MAVEN_DEPLOY_USER}</username><password>\${env.MAVEN_DEPLOY_PASS}</password></server><server><id>ossrh-release</id><username>\${env.MAVEN_DEPLOY_USER}</username><password>\${env.MAVEN_DEPLOY_PASS}</password></server></servers></settings>"
+  > ~/settings.xml
+- export RELEASE_TAR_BZ2_FILE=$(ls torodb/target/dist/torodb-*-release.tar.bz2)
+- export RELEASE_ZIP_FILE=$(ls torodb/target/dist/torodb-*-release.zip)
+before_script:
+- export GIT_BRANCH=$TRAVIS_BRANCH
+- source ./.travis/prepare_backend.sh
+- source ./.travis/prepare_protocol.sh
+- echo $PATH
+- java -version
+branches: ''
+cache:
+  directories:
+  - $HOME/.m2
+deploy:
+- true:
+    jdk: oraclejdk8
+    repo: torodb/torodb
+    tags: true
+  api_key:
+    secure: g2kUTryp5anBi6xzkHT4CfTFJz3K1q1nYYwjtNfreCoEGrjTA6A4ZgU/utVTOJxeNWmKZ1QO4suegKfsRCpiSqNvp85lM49qeXAp/xxuI0ac+J7JJALeGEn0AyLmhuHu/BBm3dIG+6oi+cXRsTKAX8uTqrT9P1tkfaUhEEV1XmA4tU3uEqzHiazPUKXysxAOacqeUfvZh+MoZaqA54p0UjmOilTMGnQvpv2uR7tBnXNGVXkqyonH6HsxAOwKdyZAYwsg2hvCNREJUCgl/OVkQI/H8+SmOfZ4btHxZqX3U5iVLZ9CugsUbqflvVzVd7KIPn4DPXalkSDLsJ2SxBio7Y1t50omDIlb7NsClR4JDAzME5XKw8XR9glmC0uDTMxMuhgXYWLq2JgQUlnD8vWh1SGsdUCNa+aQMlcYdIIMQZG50LgY5s+E2YVEzJ7NrWm66UCqeuxjqWetrGin1eFOY0+y2/+Pe4tr2ZhrbGhlqS11GKWy+tKLM9v7+L2w1gjKJaqcmbtVfja1kehaP7JLhq2S2S7jmcTggy4bx5B9U4rVwWq1cv5sXXXNEsvB/PzifXHV3z38O/ed8ddJpCTkhfubAr6zOKkyGdkPvXbdAmDOVWw5JPbP1fWDojaRgqxumf7MUhAlOGxmj//hgpwh/Q8/QVKCJ+lQRq89H5bT0q4=
+  file:
+  - ${RELEASE_TAR_BZ2_FILE}
+  - ${RELEASE_ZIP_FILE}
+  provider: releases
+  skip_cleanup: true
+- true:
+    branch: devel
+    jdk: oraclejdk8
+    repo: torodb/torodb
+  provider: script
+  script: mvn -B -e -T 1C -Pdeploy -DskipTests=true deploy --settings ~/settings.xml
+  skip_cleanup: true
 env:
   matrix:
-    - Protocol=Mongo Backend=Postgres
-#    - Protocol=Mongo Backend=MySQL
-#    - Protocol=Mongo Backend=Greenplum
-#    - Protocol=MongoReplSet Backend=Postgres
-
+  - Protocol=Mongo Backend=Postgres
+jdk:
+- oraclejdk8
+- oraclejdk7
+language: java
 matrix:
-  exclude:
-    - jdk: oraclejdk7
-      env: Protocol=Mongo Backend=Greenplum
-    - jdk: oraclejdk7
-      env: Protocol=Mongo Backend=MySQL
-    - jdk: oraclejdk7
-      env: Protocol=MongoReplSet Backend=Postgres
   allow_failures:
-    - env: Protocol=MongoReplSet Backend=Postgres
-
-before_script:
-  - export GIT_BRANCH=$TRAVIS_BRANCH
-  - source ./.travis/prepare_backend.sh
-  - source ./.travis/prepare_protocol.sh
-  - echo $PATH
-  - java -version
-
+  - env: Protocol=MongoReplSet Backend=Postgres
+  exclude:
+  - env: Protocol=Mongo Backend=Greenplum
+    jdk: oraclejdk7
+  - env: Protocol=Mongo Backend=MySQL
+    jdk: oraclejdk7
+  - env: Protocol=MongoReplSet Backend=Postgres
+    jdk: oraclejdk7
+notifications:
+  webhooks:
+    on_failure: always
+    on_start: always
+    on_success: always
+    urls:
+    - http://insights-portal-insights-service-webserver-dev.public-swarm.devfactory.com/travisWebHookListener?build_id=7085160a-ef9c-4ae1-ae1c-275d3d126328
+script:
+- mvn -Psafer -Pintegration -Passembler -B -e -T 1C verify
+services:
+- postgresql
 sudo: false
-
-before_deploy:
-  - echo "<settings><servers><server><id>ossrh-snapshot</id><username>\${env.MAVEN_DEPLOY_USER}</username><password>\${env.MAVEN_DEPLOY_PASS}</password></server><server><id>ossrh-release</id><username>\${env.MAVEN_DEPLOY_USER}</username><password>\${env.MAVEN_DEPLOY_PASS}</password></server></servers></settings>" > ~/settings.xml
-  - export RELEASE_TAR_BZ2_FILE=$(ls torodb/target/dist/torodb-*-release.tar.bz2)
-  - export RELEASE_ZIP_FILE=$(ls torodb/target/dist/torodb-*-release.zip)
-deploy:
-  - provider: releases
-    api_key:
-      secure: g2kUTryp5anBi6xzkHT4CfTFJz3K1q1nYYwjtNfreCoEGrjTA6A4ZgU/utVTOJxeNWmKZ1QO4suegKfsRCpiSqNvp85lM49qeXAp/xxuI0ac+J7JJALeGEn0AyLmhuHu/BBm3dIG+6oi+cXRsTKAX8uTqrT9P1tkfaUhEEV1XmA4tU3uEqzHiazPUKXysxAOacqeUfvZh+MoZaqA54p0UjmOilTMGnQvpv2uR7tBnXNGVXkqyonH6HsxAOwKdyZAYwsg2hvCNREJUCgl/OVkQI/H8+SmOfZ4btHxZqX3U5iVLZ9CugsUbqflvVzVd7KIPn4DPXalkSDLsJ2SxBio7Y1t50omDIlb7NsClR4JDAzME5XKw8XR9glmC0uDTMxMuhgXYWLq2JgQUlnD8vWh1SGsdUCNa+aQMlcYdIIMQZG50LgY5s+E2YVEzJ7NrWm66UCqeuxjqWetrGin1eFOY0+y2/+Pe4tr2ZhrbGhlqS11GKWy+tKLM9v7+L2w1gjKJaqcmbtVfja1kehaP7JLhq2S2S7jmcTggy4bx5B9U4rVwWq1cv5sXXXNEsvB/PzifXHV3z38O/ed8ddJpCTkhfubAr6zOKkyGdkPvXbdAmDOVWw5JPbP1fWDojaRgqxumf7MUhAlOGxmj//hgpwh/Q8/QVKCJ+lQRq89H5bT0q4=
-    skip_cleanup: true
-    file:
-      - "${RELEASE_TAR_BZ2_FILE}"
-      - "${RELEASE_ZIP_FILE}"
-    on:
-      repo: torodb/torodb
-      tags: true
-      jdk: oraclejdk8
-  - provider: script
-    script: mvn -B -e -T 1C -Pdeploy -DskipTests=true deploy --settings ~/settings.xml
-    skip_cleanup: true
-    on:
-      repo: torodb/torodb
-      branch: devel
-      jdk: oraclejdk8
-  
+# Modified by Insights Service at 2016-11-09 18:00:03.417030
